@@ -3,7 +3,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Camera = workspace.CurrentCamera
-if not UserInputService.TouchEnabled then return end
+if not UserInputService.TouchEnabled then game.Players.LocalPlayer:Kick("You need to be on mobile to use this script.") return end
 local player = Players.LocalPlayer
 local gui = player:WaitForChild("PlayerGui")
 local touchGui = gui:WaitForChild("TouchGui")
