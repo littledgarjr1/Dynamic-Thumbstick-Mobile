@@ -1,0 +1,146 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Camera = workspace.CurrentCamera
+if not UserInputService.TouchEnabled then return end
+local player = Players.LocalPlayer
+local gui = player:WaitForChild("PlayerGui")
+local touchGui = gui:WaitForChild("TouchGui")
+local controlFrame = touchGui:WaitForChild("TouchControlFrame")
+if controlFrame:FindFirstChild("ThumbstickFrame") then
+    controlFrame.ThumbstickFrame.Visible = false
+end
+local humanoid
+local function setHumanoid()
+    local char = player.Character or player.CharacterAdded:Wait()
+    humanoid = char:WaitForChild("Humanoid")
+end
+setHumanoid()
+player.CharacterAdded:Connect(setHumanoid)
+local root = Instance.new("Frame")
+root.Size = UDim2.fromScale(1,1)
+root.BackgroundTransparency = 1
+root.Parent = controlFrame
+local base = Instance.new("ImageLabel")
+base.Size = UDim2.fromOffset(120,120)
+base.AnchorPoint = Vector2.new(0.5,0.5)
+base.BackgroundTransparency = 1
+base.ImageTransparency = 1
+base.Visible = false
+base.Image = "rbxasset://textures/ui/input/TouchControlsSheetV2.png"
+base.ImageRectOffset = Vector2.new(1,1)
+base.ImageRectSize = Vector2.new(144,144)
+base.Parent = root
+local knob = Instance.new("ImageLabel")
+knob.Size = UDim2.fromOffset(80,80)
+knob.AnchorPoint = Vector2.new(0.5,0.5)
+knob.BackgroundTransparency = 1
+knob.ImageTransparency = 1
+knob.Image = "rbxasset://textures/ui/input/TouchControlsSheetV2.png"
+knob.ImageRectOffset = Vector2.new(145,1)
+knob.ImageRectSize = Vector2.new(144,144)
+knob.Parent = root
+local segments = {}
+local SEGMENT_COUNT = 6
+for i = 1, SEGMENT_COUNT do
+    local seg = Instance.new("ImageLabel")
+    seg.Size = UDim2.fromOffset(30,30)
+    seg.AnchorPoint = Vector2.new(0.5,0.5)
+    seg.BackgroundTransparency = 1
+    seg.Image = "rbxasset://textures/ui/input/TouchControlsSheetV2.png"
+    seg.ImageRectOffset = Vector2.new(289,1)
+    seg.ImageRectSize = Vector2.new(144,144)
+    seg.Visible = false
+    seg.Parent = root
+    table.insert(segments, seg)
+end
+local MAX_RADIUS = 80
+local DEADZONE = 10
+local RESPONSE_POWER = 1.2
+local RETURN_TWEEN = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local FADE_TWEEN = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local activeTouch
+local moveVector = Vector3.zero
+local returnTween, fadeIn, fadeOut
+local function cameraRelative(vec2)
+    local cf = Camera.CFrame
+    local forward = Vector3.new(cf.LookVector.X,0,cf.LookVector.Z).Unit
+    local right = Vector3.new(cf.RightVector.X,0,cf.RightVector.Z).Unit
+    return (right*vec2.X + forward*-vec2.Y)
+end
+local function getCenter(gui)
+    return gui.AbsolutePosition + gui.AbsoluteSize/2
+end
+local function updateSegments()
+    local startPos = getCenter(base)
+    local endPos = getCenter(knob)
+    local delta = endPos - startPos
+    local dist = delta.Magnitude
+    local dir = delta.Unit
+    for i, seg in ipairs(segments) do
+        local t = i/(#segments+1)
+        local pos = startPos + dir*dist*t
+        seg.Position = UDim2.fromOffset(pos.X,pos.Y)
+        seg.Rotation = math.deg(math.atan2(delta.Y,delta.X))
+        seg.Visible = dist > DEADZONE
+    end
+end
+UserInputService.TouchStarted:Connect(function(input,gp)
+    if gp or activeTouch then return end
+    activeTouch = input
+    base.Position = UDim2.fromOffset(input.Position.X,input.Position.Y)
+    knob.Position = base.Position
+    base.Visible = true
+    fadeIn = TweenService:Create(base, FADE_TWEEN, {ImageTransparency=0})
+    fadeIn:Play()
+    TweenService:Create(knob, FADE_TWEEN, {ImageTransparency=0}):Play()
+    for _, seg in ipairs(segments) do
+        seg.Visible = true
+        seg.ImageTransparency = 0
+    end
+end)
+UserInputService.TouchMoved:Connect(function(input)
+    if input ~= activeTouch then return end
+    local center = getCenter(base)
+    local delta = input.Position - center
+    local mag = delta.Magnitude
+    if mag < DEADZONE then
+        moveVector = Vector3.zero
+        return
+    end
+    if mag > MAX_RADIUS then
+        delta = delta.Unit * MAX_RADIUS
+        mag = MAX_RADIUS
+    end
+    knob.Position = UDim2.fromOffset(center.X + delta.X, center.Y + delta.Y)
+    local normalized = (mag/MAX_RADIUS)^RESPONSE_POWER
+    local dir = delta.Unit * normalized
+    moveVector = cameraRelative(dir)
+    updateSegments()
+end)
+UserInputService.TouchEnded:Connect(function(input)
+    if input ~= activeTouch then return end
+    activeTouch = nil
+    moveVector = Vector3.zero
+    if returnTween then returnTween:Cancel() end
+    returnTween = TweenService:Create(knob, RETURN_TWEEN, {Position=base.Position})
+    returnTween:Play()
+    fadeOut = TweenService:Create(base, FADE_TWEEN, {ImageTransparency=1})
+    fadeOut:Play()
+    TweenService:Create(knob, FADE_TWEEN, {ImageTransparency=1}):Play()
+    for _, seg in ipairs(segments) do
+        TweenService:Create(seg, FADE_TWEEN, {ImageTransparency=1}):Play()
+    end
+    task.delay(0.15,function()
+        base.Visible=false
+        for _, seg in ipairs(segments) do
+            seg.Visible=false
+        end
+    end)
+end)
+RunService.RenderStepped:Connect(function()
+    if humanoid then
+        humanoid:Move(moveVector,true)
+    end
+end)
